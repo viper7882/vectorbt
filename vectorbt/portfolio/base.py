@@ -8,7 +8,7 @@ and calculating various risk and performance metrics. It uses Numba-compiled
 functions from `vectorbt.portfolio.nb` for most computations and record classes based on
 `vectorbt.records.base.Records` for evaluating events such as orders, logs, trades, positions, and drawdowns.
 
-The job of the `Portfolio` class is to create a series of positions allocated 
+The job of the `Portfolio` class is to create a series of positions allocated
 against a cash component, produce an equity curve, incorporate basic transaction costs
 and produce a set of statistics about its performance. In particular, it outputs
 position/profit metrics and drawdown information.
@@ -1411,6 +1411,7 @@ You can also replace templates across all subplots by using the global template 
 ![](/assets/images/portfolio_plot_path.svg)
 """
 import warnings
+import inspect
 
 import numpy as np
 import pandas as pd
@@ -2841,6 +2842,15 @@ class Portfolio(Wrapping, StatsBuilderMixin, PlotsBuilderMixin, metaclass=MetaPo
             wrapper_kwargs = {}
         if not wrapper_kwargs.get('group_select', True) and cash_sharing:
             raise ValueError("group_select cannot be disabled if cash_sharing=True")
+
+        # frameinfo = inspect.getframeinfo(inspect.currentframe())
+        # msg = "{} Line: {}: ".format(
+        #     frameinfo.function, frameinfo.lineno,
+        # )
+        # sub_msg = "cash_sharing: {}".format(
+        #     cash_sharing,
+        # )
+        # print(msg + sub_msg)
 
         # Prepare the simulation
         broadcastable_args = dict(

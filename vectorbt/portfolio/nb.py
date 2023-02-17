@@ -10,9 +10,9 @@ other Numba-compatible types.
 !!! note
     vectorbt treats matrices as first-class citizens and expects input arrays to be
     2-dim, unless function has suffix `_1d` or is meant to be input to another function.
-    
+
     All functions passed as argument should be Numba-compiled.
-    
+
     Records should retain the order they were created in.
 
 !!! warning
@@ -685,6 +685,8 @@ def process_order_nb(i: int,
                      log_records: tp.RecordArray) -> tp.Tuple[OrderResult, ProcessOrderState]:
     """Process an order by executing it, saving relevant information to the logs, and returning a new state."""
 
+    # print("process_order_nb, INFO: order, size: ", order.size, ", price: ", order.price)
+
     # Execute the order
     exec_state, order_result = execute_order_nb(state, order)
 
@@ -786,6 +788,8 @@ def order_nb(size: float = np.nan,
     """Create an order.
 
     See `vectorbt.portfolio.enums.Order` for details on arguments."""
+
+    # print("order_nb, size:", float(size))
 
     return Order(
         size=float(size),
@@ -1481,6 +1485,9 @@ def simulate_from_orders_nb(target_shape: tp.Shape,
                     log=flex_select_auto_nb(log, i, col, flex_2d)
                 )
 
+                # print("simulate_from_orders_nb, INFO: order, size: ", order.size, ", price: ", order.price,
+                #       ", position_now: ", position_now)
+
                 # Process the order
                 state = ProcessOrderState(
                     cash=cash_now,
@@ -1700,7 +1707,8 @@ def signals_to_size_nb(position_now: float,
                        size: float,
                        size_type: int,
                        accumulate: int,
-                       val_price_now: float) -> tp.Tuple[float, int, int]:
+                       val_price_now: float,
+                       cash_now: float) -> tp.Tuple[float, int, int]:
     """Translate direction-aware signals into size, size type, and direction."""
     if size_type != SizeType.Amount and size_type != SizeType.Value and size_type != SizeType.Percent:
         raise ValueError("Only SizeType.Amount, SizeType.Value, and SizeType.Percent are supported")
@@ -1709,6 +1717,9 @@ def signals_to_size_nb(position_now: float,
     abs_position_now = abs(position_now)
     if is_less_nb(size, 0):
         raise ValueError("Negative size is not allowed. You must express direction using signals.")
+
+    # if position_now != 0:
+    #     print("signals_to_size_nb, position_now: ", position_now, ", accumulate: ", accumulate, ", size: ", size, ", size_type: ", size_type)
 
     if position_now > 0:
         # We're in a long position
@@ -1776,10 +1787,22 @@ def signals_to_size_nb(position_now: float,
     else:
         if is_long_entry:
             # Open long position
-            order_size = size
+            if size_type == SizeType.Percent:
+                order_size = size * cash_now / 100.0 / val_price_now
+            elif size_type == SizeType.Value:
+                order_size = size / val_price_now
+            else:
+                order_size = size
+            size_type = SizeType.Amount
         elif is_short_entry:
             # Open short position
-            order_size = -size
+            if size_type == SizeType.Percent:
+                order_size -= size * cash_now / 100.0 / val_price_now
+            elif size_type == SizeType.Value:
+                order_size -= size / val_price_now
+            else:
+                order_size = -size
+            size_type = SizeType.Amount
 
     return order_size, size_type, direction
 
@@ -2166,6 +2189,9 @@ def simulate_from_signal_func_nb(target_shape: tp.Shape,
                                 _accumulate
                             )
 
+                # if size != 0:
+                #     print("i: ", i, ", k: ", k, ", col: ", col, ", size: ", size, ", flex_2d: ", flex_2d)
+
                 # Convert both signals to size (direction-aware), size type, and direction
                 _size, _size_type, _direction = signals_to_size_nb(
                     last_position[col],
@@ -2176,8 +2202,13 @@ def simulate_from_signal_func_nb(target_shape: tp.Shape,
                     flex_select_auto_nb(size, i, col, flex_2d),
                     flex_select_auto_nb(size_type, i, col, flex_2d),
                     _accumulate,
-                    last_val_price[col]
+                    last_val_price[col],
+                    cash_now,
                 )
+                # print("_size: ", _size, ", _size_type: ", _size_type, ", _direction: ", _direction)
+                # _size_type:  2 , _direction:  2
+                # if _size != 0:
+                #     print("simulate_from_signal_func_nb, i: ", i, ", k: ", k, ", col: ", col, ", _size: ", _size, ", _size_type: ", _size_type, ", cash_now: ", cash_now)
 
                 # Save all info
                 price_arr[col] = _price
@@ -2248,6 +2279,9 @@ def simulate_from_signal_func_nb(target_shape: tp.Shape,
                     else:  # short order
                         if _direction == Direction.ShortOnly:
                             _size *= -1
+
+                    # print("simulate_from_signal_func_nb, i: ", i, ", k: ", k, ", col: ", col, ", calling order_nb with _size: ", _size, ", _size_type: ", _size_type)
+
                     order = order_nb(
                         size=_size,
                         price=_price,
@@ -2277,6 +2311,9 @@ def simulate_from_signal_func_nb(target_shape: tp.Shape,
                         oidx=oidx,
                         lidx=lidx
                     )
+
+                    # print("simulate_from_signal_func_nb, INFO: order, size: ", order.size, ", price: ", order.price,
+                    #       ", position_now: ", position_now)
 
                     order_result, new_state = process_order_nb(
                         i, col, group,
@@ -3037,6 +3074,8 @@ def simulate_nb(target_shape: tp.Shape,
                         lidx=lidx
                     )
 
+                    # print("simulate_nb, INFO: order, size: ", order.size, ", price: ", order.price)
+
                     order_result, new_state = process_order_nb(
                         i, col, group,
                         state,
@@ -3665,6 +3704,9 @@ def simulate_row_wise_nb(target_shape: tp.Shape,
                         oidx=oidx,
                         lidx=lidx
                     )
+
+                    # print("simulate_row_wise_nb, INFO: order, size: ", order.size, ", price: ", order.price,
+                    #       ", position_now: ", position_now)
 
                     order_result, new_state = process_order_nb(
                         i, col, group,
@@ -4368,6 +4410,8 @@ def flex_simulate_nb(target_shape: tp.Shape,
                         lidx=lidx
                     )
 
+                    # print("flex_simulate_nb, INFO: order, size: ", order.size, ", price: ", order.price)
+
                     order_result, new_state = process_order_nb(
                         i, col, group,
                         state,
@@ -4898,6 +4942,9 @@ def flex_simulate_row_wise_nb(target_shape: tp.Shape,
                         oidx=oidx,
                         lidx=lidx
                     )
+
+                    # print("flex_simulate_row_wise_nb, INFO: order, size: ", order.size, ", price: ", order.price,
+                    #       ", position_now: ", position_now)
 
                     order_result, new_state = process_order_nb(
                         i, col, group,
